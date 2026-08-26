@@ -1,116 +1,106 @@
 # keepassxc-ps1
 
-Yes. That would be a useful small repository: **`keepassxc-ps1`** containing the automated Windows build script and clear instructions.
+PowerShell scripts for building and testing the [KeePassXC](https://github.com/keepassxreboot/keepassxc) source repository on Windows.
 
-I would structure it like this:
+## What this repository is for
 
-```text
-keepassxc-ps1/
-├── build-debug.ps1
-├── README.md
-└── LICENSE
-```
+This repository contains PowerShell automation scripts that are intended to be used **with a local KeePassXC source checkout**. The scripts are not a replacement for the KeePassXC source repository; they make the Windows build and test process easier to run.
 
-### `build-debug.ps1`
+KeePassXC source repository:
 
-The script we just created would be the main file. I would make two small improvements before publishing it:
+- [KeePassXC on GitHub](https://github.com/keepassxreboot/keepassxc)
 
-* Don't hard-code your username/path.
-* Automatically locate the KeePassXC repository and vcpkg when possible.
-* Keep the Visual Studio 2026 and Windows SDK paths configurable.
-* Check for `windeployqt` before rebuilding anything.
-* Give clear error messages if a prerequisite is missing.
-
-### `README.md`
-
-Something like:
-
-```markdown
-# KeePassXC Windows Build Script
-
-PowerShell automation for building KeePassXC from source on Windows using:
-
-- Visual Studio
-- MSVC
-- Ninja
-- CMake
-- vcpkg
-- Qt 6
-- windeployqt
+If you are working from a fork, the script can be used with your local fork as well.
 
 ## Requirements
 
-- Windows 10/11
-- Visual Studio 2026 Community or compatible Visual Studio installation
+- Windows 10 or Windows 11
+- Visual Studio with C++ build tools
+- Windows SDK
 - CMake
 - Ninja
 - Git
 - vcpkg
-- Windows SDK
+- Qt 6 through vcpkg
+- Asciidoctor for documentation generation
 
-The script installs the required Qt packages through vcpkg.
+The build scripts are designed to use the Qt installation managed by vcpkg. The Qt Online Installer is not required for this workflow.
 
-You do not need to install the Qt Online Installer.
+## Recommended directory layout
 
-## Repository layout
+Keep the KeePassXC source repository and this repository in the same parent directory. For example:
 
-The script expects:
+```text
+keepassxc-repo/
+├── keepassxc/
+│   └── ... KeePassXC source files ...
+├── vcpkg/
+│   └── ... vcpkg files ...
+└── keepassxc-ps1/
+    ├── build-debug.ps1
+    └── README.md
+```
 
-    keepassxc-repo/
-    ├── keepassxc/
-    ├── vcpkg/
-    └── build-debug.ps1
+The exact layout can depend on the configuration used by the PowerShell script.
 
 ## Usage
 
-Open PowerShell and run:
+First, clone or otherwise obtain the [KeePassXC repository](https://github.com/keepassxreboot/keepassxc) and prepare its dependencies.
 
-    cd C:\Users\<username>\Personal_Coding\keepassxc-repo
+Then open PowerShell and run the appropriate script from this repository.
 
-Then:
+For example:
 
-    .\build-debug.ps1
+```powershell
+cd C:\path\to\keepassxc-ps1
+.\build-debug.ps1
+```
 
-The script will:
+The script is intended to configure, build, and test the KeePassXC source checkout. It can automate tasks such as:
 
-1. Load the Visual Studio x64 build environment.
-2. Check MSVC, Ninja, RC, and MT.
-3. Check the Windows SDK.
-4. Configure vcpkg.
-5. Install Qt through vcpkg if necessary.
-6. Install the Qt `windeployqt` feature if necessary.
-7. Configure KeePassXC with CMake.
-8. Build the Debug version.
-9. Locate `keepassxc.exe`.
-10. Launch KeePassXC.
+1. Loading the Visual Studio x64 development environment.
+2. Checking the MSVC, Ninja, and Windows SDK tools.
+3. Configuring vcpkg.
+4. Installing or checking the required Qt packages.
+5. Installing or checking `windeployqt`.
+6. Configuring KeePassXC with CMake.
+7. Building the Debug version.
+8. Finding and launching `keepassxc.exe`.
+
+## KeePassXC fork
+
+If you are developing on a fork, make your changes in your fork and use the local checkout with the PowerShell scripts. For example, a `develop` branch can be built without changing the scripts' purpose: the scripts operate on the KeePassXC source tree that they are configured to use.
 
 ## Qt
 
-The script uses the Qt installation managed by vcpkg:
+The build workflow uses Qt provided by vcpkg. In a typical vcpkg installation, the Qt files are under:
 
-    vcpkg\installed\x64-windows\
+```text
+vcpkg\installed\x64-windows\
+```
 
-It does not require the Qt Online Installer.
+The deployment tool is expected at a location similar to:
 
-## Build directory
+```text
+vcpkg\installed\x64-windows\tools\Qt6\bin\windeployqt.exe
+```
 
-The script creates:
+The Qt Online Installer is not required when the necessary Qt packages are available through vcpkg.
 
-    keepassxc\build\
+## Build output
 
-The existing build directory is removed before configuring a clean Debug build.
+A Debug build normally creates a build directory inside the KeePassXC source tree:
+
+```text
+keepassxc\build\
+```
+
+The resulting executable is `keepassxc.exe`.
+
+## Purpose
+
+The goal of this repository is to make repeated KeePassXC Windows development builds easier: instead of entering many PowerShell commands manually, run the appropriate script and let it check and configure the build environment.
 
 ## License
 
-This script is provided under the MIT License.
-```
-
-One important point: **don't publish your current script unchanged**, because it contains your personal path:
-
-```text
-C:\Users\<user>\keepassxc
-```
-
-For a public GitHub repository, I would change that to automatically determine the repository location, e.g. based on `$PSScriptRoot`.
-
-That would make `keepassxc-ps1` usable by other KeePassXC developers without editing the script.
+This repository is provided under the MIT License.
