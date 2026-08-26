@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     # Expected layout (all sibling folders under one parent):
-    #   <parent>\keepassxc\   <- this script's default location
+    #   <parent>\keepassxc\   <- KeePassXC source checkout
     #   <parent>\vcpkg\
     #   <parent>\ruby\        <- created automatically if needed
     # Override any of these to point elsewhere.
@@ -16,7 +16,11 @@ param(
     [string]$WindowsSdkRoot = "C:\Program Files (x86)\Windows Kits\10",
 
     # Left blank to auto-detect the newest installed SDK version.
-    [string]$WindowsSdkVersion = ""
+    [string]$WindowsSdkVersion = "",
+
+    # Preserve the existing build directory by default. Use -Clean when
+    # you specifically want a completely fresh CMake configuration.
+    [switch]$Clean
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,13 +30,23 @@ $ErrorActionPreference = "Stop"
 # Visual Studio + Ninja + vcpkg + Qt + Asciidoctor
 # ============================================================
 
+# ============================================================
+# Validate paths
+# ============================================================
+
+if (-not (Test-Path $Repo -PathType Container)) {
+    throw "KeePassXC repository was not found: $Repo"
+}
+
+if (-not (Test-Path $VcpkgRoot -PathType Container)) {
+    throw "vcpkg directory was not found: $VcpkgRoot"
+}
 
 # ============================================================
 # Locate Visual Studio Developer Shell
 # ============================================================
 
 if (-not $VsDevShell) {
-
     $VsWhere = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
 
     if (-not (Test-Path $VsWhere)) {
@@ -47,7 +61,6 @@ if (-not $VsDevShell) {
 
     $VsDevShell = Join-Path $VsInstallPath "Common7\Tools\Launch-VsDevShell.ps1"
 }
-
 
 # ============================================================
 # Load Visual Studio environment
@@ -68,10 +81,12 @@ Write-Host $VsDevShell
 
 & $VsDevShell -Arch amd64
 
-# Visual Studio can modify VCPKG_ROOT.
-# Set it again after loading the VS environment.
-$env:VCPKG_ROOT = $VcpkgRoot
+if ($LASTEXITCODE -ne 0) {
+    throw "Visual Studio Developer environment failed to load."
+}
 
+# Visual Studio can modify VCPKG_ROOT. Set it again after loading VS.
+$env:VCPKG_ROOT = $VcpkgRoot
 
 # ============================================================
 # Check build tools
@@ -96,7 +111,6 @@ Write-Host ""
 Write-Host "mt:"
 where.exe mt
 
-
 # ============================================================
 # Configure Windows SDK
 # ============================================================
@@ -105,7 +119,6 @@ Write-Host ""
 Write-Host "Checking Windows SDK..."
 
 if (-not $WindowsSdkVersion) {
-
     $DetectedSdkVersion = Get-ChildItem "$WindowsSdkRoot\bin" -Directory -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } |
         Sort-Object { [version]$_.Name } -Descending |
@@ -145,7 +158,6 @@ $env:PATH = "$SdkBin;$env:PATH"
 
 Write-Host "Windows SDK is OK."
 
-
 # ============================================================
 # Check vcpkg
 # ============================================================
@@ -172,7 +184,6 @@ if (-not (Test-Path $VcpkgToolchain)) {
 
 Write-Host "vcpkg is OK."
 
-
 # ============================================================
 # Check Qt
 # ============================================================
@@ -183,22 +194,13 @@ Write-Host "Checking Qt..."
 Write-Host "============================================================"
 
 $QtRoot = "$env:VCPKG_ROOT\installed\x64-windows"
-
 $QtDir = "$QtRoot\share\Qt6"
-
 $QtConfig = "$QtDir\Qt6Config.cmake"
-
 $QtToolsBin = "$QtRoot\tools\Qt6\bin"
-
 $WinDeployQt = "$QtToolsBin\windeployqt.exe"
 
-
-# ------------------------------------------------------------
-# Install Qt if Qt6Config.cmake is missing
-# ------------------------------------------------------------
-
+# Install Qt if Qt6Config.cmake is missing.
 if (-not (Test-Path $QtConfig)) {
-
     Write-Host ""
     Write-Host "Qt6Config.cmake was not found."
     Write-Host "Installing Qt through vcpkg..."
@@ -211,13 +213,9 @@ if (-not (Test-Path $QtConfig)) {
     }
 }
 
-
-# ------------------------------------------------------------
-# Install windeployqt feature if missing
-# ------------------------------------------------------------
-
+# KeePassXC requires windeployqt on Windows. vcpkg's feature may require
+# rebuilding qtbase and related Qt packages, so --recurse is intentional.
 if (-not (Test-Path $WinDeployQt)) {
-
     Write-Host ""
     Write-Host "windeployqt.exe is missing."
     Write-Host "Installing Qt windeployqt feature through vcpkg."
@@ -232,11 +230,6 @@ if (-not (Test-Path $WinDeployQt)) {
         throw "vcpkg failed to install qtbase[windeployqt]."
     }
 }
-
-
-# ============================================================
-# Verify Qt
-# ============================================================
 
 if (-not (Test-Path $QtConfig)) {
     throw "Qt6Config.cmake still cannot be found: $QtConfig"
@@ -254,30 +247,22 @@ Write-Host ""
 Write-Host "windeployqt found:"
 Write-Host $WinDeployQt
 
-
-# Add Qt tools to PATH.
+# Add Qt tools to PATH for CMake and this script.
 $env:PATH = "$QtToolsBin;$env:PATH"
-
 
 Write-Host ""
 Write-Host "windeployqt version:"
-
 & $WinDeployQt --version
 
+if ($LASTEXITCODE -ne 0) {
+    throw "windeployqt was found but failed to run."
+}
 
 # ============================================================
 # Check Asciidoctor
 # ============================================================
-#
 # KeePassXC's docs/CMakeLists.txt requires the 'asciidoctor'
-# command to be on PATH (KPXC_FEATURE_DOCS, default ON).
-# Asciidoctor is a Ruby gem, so this needs a Ruby interpreter.
-#
-# The official KeePassXC Windows build wiki recommends:
-#   1. Install Ruby *without* Devkit (RubyInstaller for Windows)
-#   2. gem install asciidoctor
-# The Devkit/MSYS2 toolchain is not needed because asciidoctor
-# is pure Ruby with no native C extensions to compile.
+# command to be available. Asciidoctor is a Ruby gem.
 # ============================================================
 
 Write-Host ""
@@ -285,40 +270,30 @@ Write-Host "============================================================"
 Write-Host "Checking Asciidoctor..."
 Write-Host "============================================================"
 
-$RubyBin        = "$RubyRoot\bin"
-$RubyExe        = "$RubyBin\ruby.exe"
-$GemExe         = "$RubyBin\gem.cmd"
+$RubyBin = "$RubyRoot\bin"
+$RubyExe = "$RubyBin\ruby.exe"
+$GemExe = "$RubyBin\gem.cmd"
 $AsciidoctorBat = "$RubyBin\asciidoctor.bat"
 
 $ExistingAsciidoctor = Get-Command asciidoctor -ErrorAction SilentlyContinue
 
 if ($ExistingAsciidoctor) {
-
     Write-Host ""
     Write-Host "asciidoctor is already available on PATH:"
     Write-Host $ExistingAsciidoctor.Source
-
 } else {
-
-    # ------------------------------------------------------------
-    # Install Ruby (without Devkit) if not already present
-    # ------------------------------------------------------------
-
+    # Install a private Ruby runtime only when Asciidoctor is not already
+    # available. This does not modify the system-wide PATH.
     if (-not (Test-Path $RubyExe)) {
-
         Write-Host ""
         Write-Host "Ruby was not found: $RubyExe"
-        Write-Host "Looking up the latest RubyInstaller (without Devkit, x64)..."
+        Write-Host "Looking up the latest RubyInstaller (x64, without Devkit)..."
         Write-Host ""
 
         $ReleaseInfo = Invoke-RestMethod `
             -Uri "https://api.github.com/repos/oneclick/rubyinstaller2/releases/latest" `
             -UseBasicParsing
 
-        # Devkit installer assets are named "rubyinstaller-devkit-...-x64.exe".
-        # Requiring a digit right after "rubyinstaller-" excludes those,
-        # and requiring the "-x64.exe" suffix excludes the arm/x86 builds
-        # and the .7z / .asc assets.
         $RubyAsset = $ReleaseInfo.assets |
             Where-Object { $_.name -match '^rubyinstaller-\d.*-x64\.exe$' } |
             Select-Object -First 1
@@ -339,7 +314,7 @@ if ($ExistingAsciidoctor) {
 
         Write-Host ""
         Write-Host "Installing Ruby to $RubyRoot ..."
-        Write-Host "(Private install: no file associations, no system-wide PATH change.)"
+        Write-Host "Private install: no file associations and no system-wide PATH change."
         Write-Host ""
 
         $InstallArgs = @(
@@ -364,18 +339,10 @@ if ($ExistingAsciidoctor) {
     Write-Host "Ruby found:"
     Write-Host $RubyExe
 
-    # Add Ruby's bin directory to PATH for this session, so 'gem'
-    # works below and so CMake's find_program(asciidoctor) can
-    # locate it during configuration later in this script.
+    # Add Ruby to this PowerShell process only.
     $env:PATH = "$RubyBin;$env:PATH"
 
-
-    # ------------------------------------------------------------
-    # Install the asciidoctor gem if missing
-    # ------------------------------------------------------------
-
     if (-not (Test-Path $AsciidoctorBat)) {
-
         Write-Host ""
         Write-Host "Installing the asciidoctor gem..."
         Write-Host ""
@@ -396,20 +363,15 @@ if ($ExistingAsciidoctor) {
     Write-Host $AsciidoctorBat
 }
 
-
-# ============================================================
-# Verify Asciidoctor
-# ============================================================
-
+# If an existing system Asciidoctor was found, no PATH modification is
+# necessary. Otherwise RubyBin was added above.
 Write-Host ""
 Write-Host "asciidoctor version:"
-
 & asciidoctor --version
 
 if ($LASTEXITCODE -ne 0) {
     throw "asciidoctor was found but failed to run."
 }
-
 
 # ============================================================
 # Enter KeePassXC repository
@@ -421,20 +383,24 @@ Write-Host ""
 Write-Host "Repository:"
 Write-Host (Get-Location)
 
-
 # ============================================================
-# Remove previous build
+# Clean build (optional)
 # ============================================================
 
-Write-Host ""
-Write-Host "============================================================"
-Write-Host "Removing previous build directory..."
-Write-Host "============================================================"
+if ($Clean) {
+    Write-Host ""
+    Write-Host "============================================================"
+    Write-Host "Removing previous build directory..."
+    Write-Host "============================================================"
 
-if (Test-Path ".\build") {
-    Remove-Item ".\build" -Recurse -Force
+    if (Test-Path ".\build") {
+        Remove-Item ".\build" -Recurse -Force
+    }
+} else {
+    Write-Host ""
+    Write-Host "Keeping existing build directory."
+    Write-Host "Use -Clean for a completely fresh build."
 }
-
 
 # ============================================================
 # Configure CMake
@@ -455,7 +421,6 @@ if ($LASTEXITCODE -ne 0) {
     throw "CMake configuration failed."
 }
 
-
 # ============================================================
 # Build KeePassXC
 # ============================================================
@@ -470,7 +435,6 @@ cmake --build build --parallel
 if ($LASTEXITCODE -ne 0) {
     throw "KeePassXC build failed."
 }
-
 
 # ============================================================
 # Find KeePassXC executable
@@ -491,7 +455,6 @@ $KeePassXC = Get-ChildItem ".\build" `
 if ($null -eq $KeePassXC) {
     throw "Could not find keepassxc.exe."
 }
-
 
 # ============================================================
 # Launch KeePassXC
