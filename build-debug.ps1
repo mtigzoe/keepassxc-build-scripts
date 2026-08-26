@@ -236,6 +236,7 @@ $QtRoot = "$env:VCPKG_ROOT\installed\x64-windows"
 $QtDir = "$QtRoot\share\Qt6"
 $QtConfig = "$QtDir\Qt6Config.cmake"
 $QtToolsBin = "$QtRoot\tools\Qt6\bin"
+$QtDebugBin = "$QtRoot\debug\bin"
 $WinDeployQt = "$QtToolsBin\windeployqt.exe"
 
 # Install Qt if Qt6Config.cmake is missing.
@@ -278,9 +279,17 @@ if (-not (Test-Path $WinDeployQt)) {
     throw "windeployqt.exe still cannot be found: $WinDeployQt"
 }
 
+if (-not (Test-Path "$QtDebugBin\Qt6Core.dll")) {
+    throw "Qt debug binaries were not found: $QtDebugBin"
+}
+
 Write-Host ""
 Write-Host "Qt6 found:"
 Write-Host $QtConfig
+
+Write-Host ""
+Write-Host "Qt debug binaries found:"
+Write-Host $QtDebugBin
 
 Write-Host ""
 Write-Host "windeployqt found:"
@@ -477,6 +486,11 @@ Write-Host ""
 Write-Host "============================================================"
 Write-Host "Building KeePassXC..."
 Write-Host "============================================================"
+
+# vcpkg stores Debug Qt DLLs under debug\bin while windeployqt resolves
+# dependencies through PATH. Put the Debug Qt directory first so the
+# post-build deployment step finds Qt6*Debug DLLs such as Qt6SvgWidgetsd.dll.
+$env:PATH = "$QtDebugBin;$QtToolsBin;$env:PATH"
 
 cmake --build build --parallel
 
