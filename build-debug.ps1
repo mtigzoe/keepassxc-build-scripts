@@ -239,6 +239,8 @@ $QtToolsBin = "$QtRoot\tools\Qt6\bin"
 $QtDebugBin = "$QtRoot\debug\bin"
 $WinDeployQt = "$QtToolsBin\windeployqt.exe"
 $WinDeployQtDebug = "$QtToolsBin\windeployqt.debug.bat"
+$QtTranslationsRoot = "$QtRoot\translations\Qt6"
+$QtTranslationsCatalog = "$QtTranslationsRoot\catalogs.json"
 
 # Install Qt if Qt6Config.cmake is missing.
 if (-not (Test-Path $QtConfig)) {
@@ -272,6 +274,25 @@ if (-not (Test-Path $WinDeployQt)) {
     }
 }
 
+# Qt translations are used by windeployqt during deployment. KeePassXC's
+# project manifest does not declare qttranslations because it is a deployment
+# dependency for this Windows script, not a library linked by KeePassXC.
+# Force classic mode so this package is installed into the same global vcpkg
+# tree used by windeployqt. Without --classic, vcpkg detects KeePassXC's
+# vcpkg.json and rejects package arguments in manifest mode.
+if (-not (Test-Path $QtTranslationsCatalog)) {
+    Write-Host ""
+    Write-Host "Qt translations were not found."
+    Write-Host "Installing qttranslations through vcpkg..."
+    Write-Host ""
+
+    & $VcpkgExe install qttranslations:x64-windows --classic --recurse
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "vcpkg failed to install qttranslations."
+    }
+}
+
 if (-not (Test-Path $QtConfig)) {
     throw "Qt6Config.cmake still cannot be found: $QtConfig"
 }
@@ -286,6 +307,10 @@ if (-not (Test-Path $WinDeployQtDebug)) {
 
 if (-not (Test-Path "$QtDebugBin\Qt6Cored.dll")) {
     throw "Qt debug binaries were not found: $QtDebugBin"
+}
+
+if (-not (Test-Path $QtTranslationsCatalog)) {
+    throw "Qt translations catalog was not found: $QtTranslationsCatalog"
 }
 
 Write-Host ""
@@ -303,6 +328,10 @@ Write-Host $WinDeployQt
 Write-Host ""
 Write-Host "Debug windeployqt wrapper found:"
 Write-Host $WinDeployQtDebug
+
+Write-Host ""
+Write-Host "Qt translations found:"
+Write-Host $QtTranslationsCatalog
 
 # Add Qt tools to PATH for CMake and this script.
 $env:PATH = "$QtToolsBin;$env:PATH"
