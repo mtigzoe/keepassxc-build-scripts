@@ -4,10 +4,11 @@ param(
     #   <parent>\keepassxc\   <- KeePassXC source checkout
     #   <parent>\vcpkg\
     #   <parent>\ruby\        <- created automatically if needed
-    # Override any of these to point elsewhere.
-    [string]$Repo = (Join-Path (Split-Path -Parent $PSScriptRoot) "keepassxc"),
-    [string]$VcpkgRoot = (Join-Path (Split-Path -Parent $PSScriptRoot) "vcpkg"),
-    [string]$RubyRoot = (Join-Path (Split-Path -Parent $PSScriptRoot) "ruby"),
+    # Leave these blank to auto-detect based on the script's own
+    # location, or override any of them to point elsewhere.
+    [string]$Repo = "",
+    [string]$VcpkgRoot = "",
+    [string]$RubyRoot = "",
 
     # Left blank to auto-detect via vswhere.exe. Override to force a
     # specific Visual Studio installation's Launch-VsDevShell.ps1.
@@ -29,6 +30,26 @@ $ErrorActionPreference = "Stop"
 # KeePassXC Windows Debug Build
 # Visual Studio + Ninja + vcpkg + Qt + Asciidoctor
 # ============================================================
+
+# ============================================================
+# Resolve the script's own directory
+# ============================================================
+# $PSScriptRoot is not reliably populated inside a param() block's
+# default value expressions (this depends on how the script was
+# launched, e.g. 'powershell -File' vs '.\script.ps1'). Resolve it
+# here instead, with fallbacks, after the param block has run.
+
+$ScriptDir =
+    if ($PSScriptRoot) { $PSScriptRoot }
+    elseif ($PSCommandPath) { Split-Path -Parent $PSCommandPath }
+    elseif ($MyInvocation.MyCommand.Path) { Split-Path -Parent $MyInvocation.MyCommand.Path }
+    else { (Get-Location).Path }
+
+$ParentDir = Split-Path -Parent $ScriptDir
+
+if (-not $Repo)      { $Repo = Join-Path $ParentDir "keepassxc" }
+if (-not $VcpkgRoot) { $VcpkgRoot = Join-Path $ParentDir "vcpkg" }
+if (-not $RubyRoot)  { $RubyRoot = Join-Path $ParentDir "ruby" }
 
 # ============================================================
 # Validate paths
@@ -53,10 +74,21 @@ if (-not $VsDevShell) {
         throw "vswhere.exe was not found: $VsWhere`nPass -VsDevShell explicitly if Visual Studio is installed in a non-standard way."
     }
 
-    $VsInstallPath = & $VsWhere -latest -prerelease -products * -property installationPath
+    # Restrict to actual Visual Studio SKUs (not "*") and require the
+    # native C++ toolset component. This avoids other VS-Installer-
+    # registered products that share the installer but aren't full VS
+    # and don't ship Launch-VsDevShell.ps1 -- e.g. SQL Server Management
+    # Studio is built on the VS shell and otherwise gets matched too.
+    $VsInstallPath = & $VsWhere -latest -prerelease `
+        -products Microsoft.VisualStudio.Product.Community `
+                  Microsoft.VisualStudio.Product.Professional `
+                  Microsoft.VisualStudio.Product.Enterprise `
+                  Microsoft.VisualStudio.Product.BuildTools `
+        -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+        -property installationPath
 
     if (-not $VsInstallPath) {
-        throw "vswhere.exe could not find any Visual Studio installation."
+        throw "vswhere.exe could not find a Visual Studio installation with the C++ (VC.Tools.x86.x64) component. Install the 'Desktop development with C++' workload, or pass -VsDevShell explicitly."
     }
 
     $VsDevShell = Join-Path $VsInstallPath "Common7\Tools\Launch-VsDevShell.ps1"
@@ -312,9 +344,18 @@ if ($ExistingAsciidoctor) {
             -OutFile $InstallerPath `
             -UseBasicParsing
 
+        # The download carries the internet Mark-of-the-Web. Unblocking
+        # it here reduces (but doesn't guarantee removal of) a Windows
+        # SmartScreen prompt on first run, since it's a fresh, low-
+        # reputation binary as far as Windows is concerned.
+        Unblock-File -Path $InstallerPath -ErrorAction SilentlyContinue
+
         Write-Host ""
         Write-Host "Installing Ruby to $RubyRoot ..."
         Write-Host "Private install: no file associations and no system-wide PATH change."
+        Write-Host ""
+        Write-Host "If this appears to hang, check for a hidden Windows SmartScreen"
+        Write-Host "or User Account Control prompt (Alt+Tab) and approve it."
         Write-Host ""
 
         $InstallArgs = @(

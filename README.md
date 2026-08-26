@@ -53,6 +53,7 @@ For example:
 
 ```powershell
 cd C:\path\to\keepassxc-ps1
+powershell -ExecutionPolicy Bypass -File .\build-debug.ps1
 .\build-debug.ps1
 ```
 
@@ -96,6 +97,24 @@ keepassxc\build\
 ```
 
 The resulting executable is `keepassxc.exe`.
+
+## Two ways to get it cleanly:
+
+**Rerun single-threaded** so nothing interleaves and the failure is right at the bottom:
+```powershell
+cmake --build build --parallel 1
+```
+
+**Or capture everything to a file and grep for the error**, keeping full parallelism:
+```powershell
+cmake --build build --parallel *> build-log.txt
+Select-String -Path build-log.txt -Pattern "error"
+```
+
+```
+cmake --build build --parallel 1 *> build-log.txt
+Select-String -Path build-log.txt -Pattern "error" -Context 0,3
+```
 
 ## Purpose
 
