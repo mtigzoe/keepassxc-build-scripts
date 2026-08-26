@@ -65,6 +65,22 @@ The script automatically:
 
 The Windows SDK library path is explicitly added to the linker environment. This includes `uuid.lib`, which is required by the Windows build.
 
+## Unit tests
+
+The PowerShell build script intentionally configures KeePassXC with:
+
+```text
+-DWITH_TESTS=OFF
+```
+
+This means the KeePassXC unit-test executables are not built or deployed by this workflow.
+
+**Unit tests are not required for accessibility testing.** If your goal is to test KeePassXC with JAWS, keyboard navigation, Braille output, or other accessibility features, the application Debug build is sufficient.
+
+Unit tests are recommended when you modify KeePassXC source code and need to verify that your code changes do not break existing functionality. They are especially appropriate for changes involving core application behavior such as database handling, cryptography, or other internal functionality.
+
+Keeping tests disabled also avoids unnecessary test executable deployment and the file-lock problems that can occur during the Windows Debug build.
+
 ## Clean build
 
 By default, the script preserves the existing `build` directory so incremental builds are fast. To remove it and configure a completely fresh build, use:
@@ -118,7 +134,6 @@ The script supports parameters for non-standard installations:
     -Repo "C:\path\to\keepassxc" `
     -VcpkgRoot "C:\path\to\vcpkg" `
     -RubyRoot "C:\path\to\ruby" `
-    -VsWhere "C:\path\to\vswhere.exe" `
     -VsDevShell "C:\path\to\Launch-VsDevShell.ps1" `
     -WindowsSdkRoot "C:\path\to\Windows Kits\10" `
     -WindowsSdkVersion "10.0.28000.0"
@@ -126,12 +141,12 @@ The script supports parameters for non-standard installations:
 
 All of these can normally be left blank for automatic detection:
 
-- `Repo`, `VcpkgRoot`, `RubyRoot` are found as sibling directories of `keepassxc-ps1` (see [Recommended directory layout](#recommended-directory-layout)).
-- `VsWhere` is found on `PATH`, then in the standard Visual Studio Installer location, and used to locate `VsDevShell`.
-- `WindowsSdkRoot` is found via the registry, falling back to the standard install location.
+- `Repo`, `VcpkgRoot`, and `RubyRoot` are found as sibling directories of `keepassxc-ps1` (see [Recommended directory layout](#recommended-directory-layout)).
+- Visual Studio is located automatically through `vswhere.exe` and used to locate `VsDevShell`.
+- `WindowsSdkRoot` is normally found automatically, falling back to the standard install location.
 - `WindowsSdkVersion` is the newest version installed under `WindowsSdkRoot`.
 
-Pass any of them explicitly only if your machine has a non-standard install layout. `-VsDevShell` and `-WindowsSdkRoot`/`-WindowsSdkVersion` can also be used together to skip auto-detection entirely.
+Pass any of them explicitly only if your machine has a non-standard install layout.
 
 ## KeePassXC fork
 
