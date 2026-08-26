@@ -465,7 +465,7 @@ if ($Clean) {
 } else {
     Write-Host ""
     Write-Host "Keeping existing build directory."
-    Write-Host "Use -Clean for a completely fresh build."
+    Write-Host "Use -Clean for a completely fresh CMake configuration."
 }
 
 # ============================================================
@@ -480,12 +480,16 @@ Write-Host "============================================================"
 # KeePassXC invokes WINDEPLOYQT_EXE from its Windows post-build rule.
 # vcpkg provides a Debug wrapper that correctly resolves Qt's debug DLLs
 # from debug\bin instead of looking for Qt6*Debug DLLs in the release bin.
+# KeePassXC's WITH_TESTS option defaults to ON; disable tests for this
+# application-focused Windows Debug/accessibility build so test deployment
+# steps cannot introduce unnecessary file-lock failures.
 cmake -S . -B build `
     -G Ninja `
     -DCMAKE_BUILD_TYPE=Debug `
     -DCMAKE_TOOLCHAIN_FILE="$VcpkgToolchain" `
     -DQt6_DIR="$QtDir" `
-    -DWINDEPLOYQT_EXE="$WinDeployQtDebug"
+    -DWINDEPLOYQT_EXE="$WinDeployQtDebug" `
+    -DWITH_TESTS=OFF
 
 if ($LASTEXITCODE -ne 0) {
     throw "CMake configuration failed."
