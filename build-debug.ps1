@@ -185,8 +185,15 @@ if (-not (Test-Path "$SdkLib\kernel32.lib")) {
     throw "kernel32.lib was not found: $SdkLib\kernel32.lib"
 }
 
+if (-not (Test-Path "$SdkLib\uuid.lib")) {
+    throw "uuid.lib was not found: $SdkLib\uuid.lib"
+}
+
 # Make sure Windows SDK tools are first in PATH.
 $env:PATH = "$SdkBin;$env:PATH"
+
+# Make sure Windows SDK libraries are available to the linker.
+$env:LIB = "$SdkLib;$env:LIB"
 
 Write-Host "Windows SDK is OK."
 
