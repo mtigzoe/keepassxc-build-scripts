@@ -118,12 +118,20 @@ The script supports parameters for non-standard installations:
     -Repo "C:\path\to\keepassxc" `
     -VcpkgRoot "C:\path\to\vcpkg" `
     -RubyRoot "C:\path\to\ruby" `
+    -VsWhere "C:\path\to\vswhere.exe" `
     -VsDevShell "C:\path\to\Launch-VsDevShell.ps1" `
-    -WindowsSdkRoot "C:\Program Files (x86)\Windows Kits\10" `
+    -WindowsSdkRoot "C:\path\to\Windows Kits\10" `
     -WindowsSdkVersion "10.0.28000.0"
 ```
 
-All path parameters except `WindowsSdkRoot` and `WindowsSdkVersion` can normally be left blank for automatic detection.
+All of these can normally be left blank for automatic detection:
+
+- `Repo`, `VcpkgRoot`, `RubyRoot` are found as sibling directories of `keepassxc-ps1` (see [Recommended directory layout](#recommended-directory-layout)).
+- `VsWhere` is found on `PATH`, then in the standard Visual Studio Installer location, and used to locate `VsDevShell`.
+- `WindowsSdkRoot` is found via the registry, falling back to the standard install location.
+- `WindowsSdkVersion` is the newest version installed under `WindowsSdkRoot`.
+
+Pass any of them explicitly only if your machine has a non-standard install layout. `-VsDevShell` and `-WindowsSdkRoot`/`-WindowsSdkVersion` can also be used together to skip auto-detection entirely.
 
 ## KeePassXC fork
 

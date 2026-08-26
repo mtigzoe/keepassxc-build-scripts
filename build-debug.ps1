@@ -10,11 +10,19 @@ param(
     [string]$VcpkgRoot = "",
     [string]$RubyRoot = "",
 
+    # Left blank to auto-detect vswhere.exe itself (checked on PATH, then
+    # the standard Visual Studio Installer locations). Only used when
+    # -VsDevShell is not passed directly.
+    [string]$VsWhere = "",
+
     # Left blank to auto-detect via vswhere.exe. Override to force a
     # specific Visual Studio installation's Launch-VsDevShell.ps1.
     [string]$VsDevShell = "",
 
-    [string]$WindowsSdkRoot = "C:\Program Files (x86)\Windows Kits\10",
+    # Left blank to auto-detect via the registry (falling back to the
+    # standard install locations). Override to force a specific Windows
+    # Kits root. Windows 11 SDKs are still installed under "...Kits\10".
+    [string]$WindowsSdkRoot = "",
 
     # Left blank to auto-detect the newest installed SDK version.
     [string]$WindowsSdkVersion = "",
@@ -68,11 +76,39 @@ if (-not (Test-Path $VcpkgRoot -PathType Container)) {
 # ============================================================
 
 if (-not $VsDevShell) {
-    $VsWhere = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
+    if ($VsWhere) {
+        if (-not (Test-Path $VsWhere)) {
+            throw "vswhere.exe was not found at the path passed to -VsWhere: $VsWhere"
+        }
+    } else {
+        # vswhere.exe ships with the Visual Studio Installer. Check PATH
+        # first (covers e.g. winget/chocolatey installs that register it
+        # there), then fall back to the standard installer locations.
+        # Program Files (x86) is standard on x64 Windows; ARM64 Windows
+        # installs the VS Installer under plain Program Files instead.
+        $VsWhereOnPath = Get-Command "vswhere.exe" -ErrorAction SilentlyContinue
 
-    if (-not (Test-Path $VsWhere)) {
-        throw "vswhere.exe was not found: $VsWhere`nPass -VsDevShell explicitly if Visual Studio is installed in a non-standard way."
+        if ($VsWhereOnPath) {
+            $VsWhere = $VsWhereOnPath.Source
+        } else {
+            $VsWhereCandidates = @(
+                "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe",
+                "${env:ProgramFiles}\Microsoft Visual Studio\Installer\vswhere.exe"
+            )
+
+            $VsWhere = $VsWhereCandidates |
+                Where-Object { $_ -and (Test-Path $_) } |
+                Select-Object -First 1
+        }
+
+        if (-not $VsWhere) {
+            throw "vswhere.exe could not be found on PATH or in the standard Visual Studio Installer locations.`nPass -VsWhere explicitly if Visual Studio is installed in a non-standard way, or pass -VsDevShell to bypass detection entirely."
+        }
     }
+
+    Write-Host ""
+    Write-Host "Using vswhere.exe:"
+    Write-Host $VsWhere
 
     # Restrict to actual Visual Studio SKUs (not "*") and require the
     # native C++ toolset component. This avoids other VS-Installer-
@@ -149,6 +185,47 @@ where.exe mt
 
 Write-Host ""
 Write-Host "Checking Windows SDK..."
+
+if (-not $WindowsSdkRoot) {
+    # The Windows 10/11 SDK installer records its install location in the
+    # registry under "KitsRoot10" (Windows 11 SDKs are still versioned
+    # under "...Windows Kits\10"). The installer is 32-bit, so on 64-bit
+    # Windows it writes to the WOW6432Node key; check the native key too
+    # in case the SDK was registered under 32-bit or ARM64 Windows.
+    $KitsRootRegistryPaths = @(
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows Kits\Installed Roots",
+        "HKLM:\SOFTWARE\Microsoft\Windows Kits\Installed Roots"
+    )
+
+    foreach ($RegPath in $KitsRootRegistryPaths) {
+        $RegValue = Get-ItemProperty -Path $RegPath -Name "KitsRoot10" -ErrorAction SilentlyContinue
+        if ($RegValue -and (Test-Path $RegValue.KitsRoot10)) {
+            $WindowsSdkRoot = $RegValue.KitsRoot10.TrimEnd('\')
+            break
+        }
+    }
+
+    if (-not $WindowsSdkRoot) {
+        # Registry lookup failed; fall back to the standard install
+        # locations before giving up.
+        $WindowsSdkRootCandidates = @(
+            "${env:ProgramFiles(x86)}\Windows Kits\10",
+            "${env:ProgramFiles}\Windows Kits\10"
+        )
+
+        $WindowsSdkRoot = $WindowsSdkRootCandidates |
+            Where-Object { $_ -and (Test-Path $_) } |
+            Select-Object -First 1
+    }
+
+    if (-not $WindowsSdkRoot) {
+        throw "Could not auto-detect an installed Windows 10/11 SDK. Pass -WindowsSdkRoot explicitly."
+    }
+}
+
+Write-Host ""
+Write-Host "Windows SDK root:"
+Write-Host $WindowsSdkRoot
 
 if (-not $WindowsSdkVersion) {
     $DetectedSdkVersion = Get-ChildItem "$WindowsSdkRoot\bin" -Directory -ErrorAction SilentlyContinue |
