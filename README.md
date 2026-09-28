@@ -48,8 +48,12 @@ For accessibility work, the final validation should be performed on the Windows 
 
 ## Repository relationship
 
-The KeePassXC source code lives in the upstream project:
+The KeePassXC source code is maintained in the upstream project:
 
 https://github.com/keepassxreboot/keepassxc
+
+My development fork, which includes accessibility-focused changes and ongoing work toward improved screen-reader compatibility, is:
+
+https://github.com/mtigzoe/keepassxc
 
 This repository contains scripts and documentation intended to make development, testing, and AI-assisted development easier.
